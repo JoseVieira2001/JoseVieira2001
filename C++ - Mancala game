@@ -1,0 +1,383 @@
+#include <iostream>
+#include <ctime>
+#include <cstdlib>
+#include <windows.h>
+using namespace std;
+
+
+void setcolor(unsigned int color)
+{
+    HANDLE hcon = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(hcon, color);
+}
+
+
+
+void show_board(int seed[12] , int P1score , int P2score, int &color1 , int &color2 , string &P1name, string &P2name) {
+    // Faz setup à cor escolhida pelo Player1.
+    setcolor(color1);
+    // Mostra o board e score do player1.
+    cout << "\n" << P1name << " score: " << P1score << endl;
+    for (int i = 0; i < 6; i++) {
+        if (seed[i] >= 10) cout << " " << seed[i] << " ";
+        else cout << "  " << seed[i] << " ";
+    }
+    cout << endl;
+    setcolor(color2);
+    // Mostra o board e score do player2.
+    for(int i = 11 ; i >= 6 ; i--){
+        if (seed[i] >= 10) cout << " " << seed[i] << " ";
+        else cout << "  " << seed[i] << " ";
+    }
+    cout << "\n" << P2name  <<" score: " << P2score << endl;
+}
+
+void p1move(int seed[12], int &P1score , int &color1 , string &P1name ) {
+    // Setup à cor, pois o showboard acaba com a cor do P2.
+    setcolor(color1);
+    // Last_square vai ser usado para a captura de peças. Esta inicializado a -1 para ter um valor impossível.
+    int last_square = -1;
+    int P1move;
+    bool valid = true;
+    // verifica se não é nenhuma jogado possível devido à ausência de sementes.
+    for( int i = 0 ; i < 6 ; i++){
+        if(seed[i] != 0){
+            valid = false;
+            break;
+        }
+    }
+    // Captura as sementes restantes caso não haja movimentos possíveis.
+    if(valid){
+        cout << "Because you dont have no non-empty square , the game will end. You will receive all the seeds currently in the board.";
+        for( int i = 6 ; i < 12 ; i++){
+            P1score += seed[i];
+            seed[i] = 0;
+        }
+    }
+    // Verifica se o movimento é valido.
+    while (not valid) {
+        cout << "\nChoose your square " << P1name << ".";
+        cin >> P1move;
+        // Caso o tipo de data não seja o correto.
+        if(cin.fail()){
+            cin.clear();
+            cin.ignore( 300,'\n');
+            cout << "Invalid Data type. Choose a number.";
+            continue;
+        }
+        //Situação em que a jogada é um dos buracos do jogador 1.
+        if (P1move <= 6 && P1move > 0) {
+            //Situação em que o buraco escolhido não está vazio.
+            if (seed[P1move - 1] != 0) {
+                valid = true;
+                int i = 0;
+                // Altera o tabuleiro.
+                while (seed[P1move - 1] != 0) {
+                    if ( (P1move - 2) - i < 0) i -= 12;
+                    seed[ (P1move - 2) - i]++;
+                    seed[P1move - 1]--;
+                    i++;
+                }
+                // Obtém o último quadrado alterado.
+                last_square = P1move - 1 - i;
+                // Através deste começa a captura.
+                while (true) {
+                    if ((seed[last_square] == 2 || seed[last_square] == 3) && last_square + 1 > 6) {
+                        P1score += seed[last_square];
+                        seed[last_square] = 0;
+                        last_square++;
+                    }
+                        //Parou de ocorrer capturas consecutivas.
+                    else break;
+                }
+
+
+            }
+                //O buraco escolhido está vazio.
+            else{
+                cout << "\nYou can't choose a empty Square.";
+            }
+        }
+
+            //Não é um buraco válido.
+        else cout << "\nInvalid number. Choose between 1 and 6.";
+
+    }
+}
+
+int bot(int seed[12] , bool &hardbot){
+    int max_pos;
+    //O bot escolha a melhor posição possível comparando o score de cada buraco com o score máximo alcançado anteriormente.
+    float max_score = -10;
+    float current_score;
+    int i;
+    int attempt;
+
+    for(int count = 6 ; count < 12 ; count ++) {
+        current_score = 0;
+        // O i representa o último square que a jogada do buraco de index count vai alterar.
+        i = (count - seed[count]) % 12;
+        // Verifica se esse buraco vai levar a alguma captura. Se sim adiciona - a ao seu score.
+        while(true){
+            if( (seed[i] == 1 || seed[i] == 2) && i < 6 ){
+                current_score += seed[i] + 1;
+                i --;
+            }
+            else break;
+        }
+        // Se o Jogador tiver escolhido o modo díficil existem ainda outros paramêtros.
+        if(hardbot) {
+            for (int j = 0; j < seed[count]; j++) {
+                //Attempt representa o último buraco que a jogado no count vai alterar.
+                attempt = (count - seed[count] + j) % 12;
+                //Contudo agora o Bot vai verificar se essa jogada tem alguma vantagem mesmo sem captura.
+                //Vantagens defensivas.
+                if (attempt < 12 || 5 < attempt) {
+                    if (seed[attempt] == 2) current_score += 0.1;
+                    if (seed[attempt] == 0) current_score -= 0.1;
+                    if (seed[attempt] == 1) current_score -= 0.05;
+                }
+                    //Vantagens ofensivas
+                else {
+                    if (seed[attempt] == 0) current_score += 0.05;
+                }
+            }
+        }
+        //Se o buraco de index count não tiver nada nesse buraco é deveras penalizado, pois essa jogada é ilegal.
+        if( seed[count] == 0) current_score = -100;
+        // Caso o buraco atual seja o melhor, é guardado como tal.
+        if(current_score > max_score) max_score = current_score, max_pos = count;
+    }
+    //Devolve o index do melhor resultado possível.
+    return max_pos;
+}
+
+
+void p2move(int seed[12] , int &P2score , string &P2name , bool &player , bool &hardbot , int &color2) {
+    // Neste caso não é necessário fazer setup à cor por agora.
+    // Last_square vai ser usado para a captura de peças. Esta inicializado a -1 para ter um valor impossível.
+    int last_square = -1;
+    int P2move;
+    bool valid = true;
+    // Verifica se não é nenhuma jogada possível devido à ausência de sementes.
+    for( int i = 6 ; i < 12 ; i++){
+        if(seed[i] != 0){
+            valid = false;
+            break;
+        }
+    }
+    // Captura as sementes restantes caso não haja movimentos possíveis.
+    if(valid){
+        //Aqui já é necessária a alteração de cor devido a nova mensagem que será transmitida.
+        setcolor(color2);
+        if(player) cout << "Because you dont have no non-empty square , the game will end. You will receive all the seeds currently in the board.";
+        else cout << P2name << "has no non- empty square, so the game will end. He will receive all the seeds currently in the board.";
+        for( int i = 0 ; i < 6 ; i++){
+            P2score += seed[i];
+            seed[i] = 0;
+        }
+    }
+
+    // Verifica se o movimento é valido.
+    while (not valid) {
+        //Caso seja contra um bot não são necessárias estes statements, logo são saltados à frente.
+        if(player){
+            cout << "\nChoose your square " << P2name << ".";
+            cin >> P2move;
+            // Caso o tipo de data não seja o correto.
+            if(cin.fail()){
+                cin.clear();
+                cin.ignore(300 , '\n');
+                cout << "Invalid Data type. Choose a number.";
+                continue;
+            }
+            //Eu organizei os números do index ao sentido dos ponteiros do relogio ao contrario da leitura habitual(esquerda direita, baixo cima)
+            //Logo tenho que fazer a conversão de um método para o outro.
+            P2move =  12 - (P2move - 7);
+        }
+            //O bot devolve o número certo sem ser necessário alterações. O +1 é para apenas o index ser entre 1 e 12 e não 0 e 11.
+        else P2move = bot(seed , hardbot) +1;
+        //Situação em que a jogada é um dos buracos do jogador 2.
+        if (P2move <= 12 && P2move > 6) {
+            //Situação em que o buraco escolhido não está vazio.
+            if (seed[P2move - 1] != 0) {
+                valid = true;
+                int i = 0;
+                // Altera o tabuleiro.
+                while (seed[P2move - 1] != 0) {
+                    if (P2move - 2 - i < 0) i -= 12;
+                    seed[P2move - 2 - i]++;
+                    seed[P2move - 1]--;
+                    i++;
+                }
+
+                last_square = P2move - 1 - i;
+                // Obtém o último quadrado alterado. De seguida usa-o para realizar a captura de sementes.
+                while (true) {
+                    if ((seed[last_square] == 2 || seed[last_square] == 3) && last_square + 1 < 7) {
+                        P2score += seed[last_square];
+                        seed[last_square] = 0;
+                        last_square++;
+                    }
+                        // Caso não ocorra a captura consecutivas de sementas, a captura para.
+                    else break;
+                }
+
+
+            }
+                //O buraco escolhido está vazio.
+            else{
+                cout << "\nYou can't choose a empty Square.";
+            }
+        }
+            //Não é um buraco válido.
+        else cout << "Invalid number. Choose between 7 and 12.";
+    }
+}
+
+
+
+void configuration( string &P1name, string &P2name , int &color1,int &color2, bool &player, bool &hardbot){
+    //Configuração do nomes, cores, bot e dificuldade de bot
+    //O valid é usado várias vezes de modo a verificar se o input está correto
+    bool valid = false;
+    string answer;
+    //Caso o input esteja errado Repete.
+    while(not valid) {
+        cout << "Welcome to the Oware game. Would you like to play against a bot? (Y/N)";
+        cin >> answer;
+        if( answer == "Y" || answer == "y") {
+            player = false;
+            valid = true;
+        }
+        else if ( answer == "N" || answer == "n") {
+
+            player = true;
+            valid = true;
+            break;
+        }
+        else cout << "Sorry, couldn't understand your answer. Could you repeat?.";
+    }
+    valid = false;
+    //Caso seja um jogo contra um bot vai ser configurada a dificuldade do bot.
+    if(not player){
+        while(not valid) {
+            cout << "What's the bot difficulty? Easy (E) or Hard (H)?";
+            cin >> answer;
+            if (answer == "e" || answer == "E") {
+                hardbot = false;
+                valid = true;
+            }
+            else if (answer == "h" || answer == "H") {
+                hardbot = true;
+                valid = true;
+
+            }
+            else cout << "I didn't understand your answer. Please repeat.";
+        }
+    }
+
+    valid = false;
+    //Este cin.ignore() resolve um bug em que eram imprimidas as mensagens da linha 283 e 288 sem esperar pelo input.
+    cin.ignore();
+
+    cout << "Ok. What's your name?";
+    //Pede input do nome
+    getline(cin,P1name);
+
+    cout << "What's your opponent's name.";
+    //Pede input do nome
+    getline( cin, P2name);
+
+    valid = false;
+    while(not valid){
+        cout << "Now choose " << P1name << " color.";
+        cout << "\nAvailable colors: BLUE, RED, PURPLE or YELLOW.";
+        answer = getchar();
+        if (answer == "b" || answer == "B") {
+            color1 = 1;
+            valid = true;
+        }
+        else if (answer == "r" || answer == "R") {
+            color1 = 4;
+            valid = true;
+        }
+        else if (answer == "p" || answer == "P") {
+            color1 = 5;
+            valid = true;
+        }
+        else if (answer == "y" || answer == "Y"){
+            color1 = 14;
+            valid = true;
+        }
+        else cout << "Sorry, couldn't understand your answer.";
+    }
+
+    valid = false;
+    //O mesmo que a situação anterior. Mensagens eram imprimidas sem esperar pelo input.
+    cin.ignore();
+    while(not valid){
+        cout << "Finally choose " << P2name << " color.";
+        cout << "\nAvailable colors: BLUE, RED, PURPLE or YELLOW.";
+        answer = getchar();
+        if (answer == "b" || answer == "B") {
+            color2 = 1;
+            valid = true;
+        }
+        else if (answer == "r" || answer == "R") {
+            color2 = 4;
+            valid = true;
+        }
+        else if (answer == "p" || answer == "P") {
+            color2 = 5;
+            valid = true;
+        }
+        else if (answer == "y" || answer == "Y"){
+            color2 = 14;
+            valid = true;
+        }
+        else cout << "Sorry, couldn't understand your answer.";
+    }
+}
+
+//These are the messages displayed when the game ends.
+void gameend( int &P1score, int &P2score, string &P1name, string &P2name){
+    cout << "Gameover.\n";
+    if(P1score > 24) cout << P1name << " wins.";
+    else if(P2score > 24) cout << P2name << " wins.";
+    else cout << "It's a tie.";
+}
+
+int main(){
+    string P1name , P2name;
+    int color1, color2;
+    bool  player, hardbot;
+    int  P1score = 0, P2score = 0;
+    configuration(P1name, P2name , color1, color2, player, hardbot);
+    //Configuração do tabuleiro
+    int seed[12];
+    for (int i = 0; i < 12; i++) seed[i] = 4;
+    //Se o score ultrapassar 25 ou forem ambos iguais a 24 o jogo acaba
+    while(not (P1score > 24 || P2score > 24 || (P1score == 24 && P2score == 24))) {
+        //Mostra o board
+        show_board(seed , P1score , P2score , color1 , color2 , P1name, P2name);
+        //Jogada do p1
+        p1move( seed , P1score, color1 , P1name);
+
+        //Condições de fim do jogo.
+        if(P1score > 24 || P2score > 24 || (P1score == 24 && P2score == 24)){
+            show_board(seed , P1score , P2score , color1 , color2 , P1name, P2name);
+            break;
+        }
+
+        show_board(seed , P1score , P2score , color1 , color2 , P1name, P2name);
+        //Jogada do p2
+        p2move(seed, P2score , P2name , player , hardbot , color2);
+    }
+    //Mostra o board uma ultima vez
+    show_board(seed , P1score , P2score , color1 , color2 , P1name, P2name);
+    Sleep(3000);
+    cout << flush;
+    gameend(P1score,P2score,P1name,P2name);
+}
+
