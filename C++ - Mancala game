@@ -277,9 +277,9 @@ void configuration( string &P1name, string &P2name , int &color1,int &color2, bo
         }
     }
 
-    valid = false;
     //Este cin.ignore() resolve um bug em que eram imprimidas as mensagens da linha 283 e 288 sem esperar pelo input.
-    cin.ignore();
+    cin.ignore(256, '\n');
+
 
     cout << "Ok. What's your name?";
     //Pede input do nome
